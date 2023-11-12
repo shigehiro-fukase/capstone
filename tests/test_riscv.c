@@ -222,7 +222,6 @@ static void test() {
 
 	for (i = 0; i < sizeof(platforms)/sizeof(platforms[0]); i++) {
 		disasm(&platforms[i], 0x1000, 0, 0);
-		disasm(&platforms[i], 0, 0, 0);
 	}
 }
 static int test1() {
@@ -310,6 +309,8 @@ L_RETURN:
 	}
 	return ret;
 }
+#define FLAGS_TEST	(1<<0)
+#define FLAGS_TEST1	(1<<0)
 int main(int argc, char * argv[]) {
 	int ret = 0;
 	const char * ifname = NULL;
@@ -318,6 +319,7 @@ int main(int argc, char * argv[]) {
 	struct platform platform;
 	platform.code = (unsigned char *) NULL;
 	int i;
+	int flags = 0;
 
 	if (argc < 2) {
 #if 0
@@ -336,6 +338,10 @@ int main(int argc, char * argv[]) {
 					return bad_arg(argc, argv, i, 0);
 				}
 			} else return bad_arg(argc, argv, i, 0);
+		} else if (strcmp("--test", argv[i]) == 0) {
+			flags |= FLAGS_TEST;
+		} else if (strcmp("--test1", argv[i]) == 0) {
+			flags |= FLAGS_TEST1;
 		} else if (strcmp("--off", argv[i]) == 0) {
 			if ((i+1)<argc) {
 				i++;
@@ -357,6 +363,9 @@ int main(int argc, char * argv[]) {
 		platform.mode = CS_MODE_RISCV64|CS_MODE_RISCVC;
 		platform.comment = "riscv64";
 	}
+
+	if (flags & FLAGS_TEST) test();
+	if (flags & FLAGS_TEST1) test1();
 
 	if (!ifname) {
 		printf("Need an argument of filename\n");
@@ -398,9 +407,6 @@ int main(int argc, char * argv[]) {
 		platform.size = rlen;
 		// end-of-file
 	}
-
-	// test();
-	test1();
 	disasm(&platform, 0, opt_offset, 0);
 
 L_RETURN:
