@@ -133,16 +133,21 @@ static void print_insn_detail(cs_insn *ins)
 	if (detail->groups_count > 0) {
 		printf(" groups[");
 		for (n = 0; n < detail->groups_count; n++) {
-			printf("%s ", cs_group_name(handle, detail->groups[n]));
+			printf("%s%s", (n==0) ? "" : " ", cs_group_name(handle, detail->groups[n]));
 		}
 		printf("]");
 	}
 
 }
 
-static void disasm(struct platform * platform, uint64_t address, uint64_t offset) {
+#define SHOW_PLATFORM	(1<<0)
+#define SHOW_CODE		(1<<1)
+#define SHOW_DISASM		(1<<2)
+static void disasm(struct platform * platform, uint64_t address, uint64_t offset, int flags) {
 	cs_insn *insn;
 	size_t count;
+
+	if (flags == 0) flags = SHOW_PLATFORM | SHOW_DISASM;
 
 	cs_err err = cs_open(platform->arch, platform->mode, &handle);
 	if (err) {
@@ -159,9 +164,9 @@ static void disasm(struct platform * platform, uint64_t address, uint64_t offset
 		size_t j;
 
 		printf("****************\n");
-		printf("Platform: %s\n", platform->comment);
-		print_string_hex("Code:", platform->code, platform->size);
-		printf("Disasm:\n");
+		if (flags & SHOW_PLATFORM) printf("Platform: %s\n", platform->comment);
+		if (flags & SHOW_CODE) print_string_hex("Code:", platform->code, platform->size);
+		if (flags & SHOW_DISASM) printf("Disasm:\n");
 
 		for (j = 0; j < count; j++) {
 			// address
@@ -179,15 +184,15 @@ static void disasm(struct platform * platform, uint64_t address, uint64_t offset
 			print_insn_detail(&insn[j]);
 			printf("\n");
 		}
-		printf("0x%" PRIx64 ":\n", insn[j-1].address + insn[j-1].size);
+		printf("0x%08" PRIx64 ": END\n", insn[j-1].address + insn[j-1].size);
 
 		// free memory allocated by cs_disasm()
 		cs_free(insn, count);
 	} else {
 		printf("****************\n");
-		printf("Platform: %s\n", platform->comment);
-		print_string_hex("Code:", platform->code, platform->size);
-		printf("ERROR: Failed to disasm given code!\n");
+		if (flags & SHOW_PLATFORM) printf("Platform: %s\n", platform->comment);
+		if (flags & SHOW_CODE) print_string_hex("Code:", platform->code, platform->size);
+		if (flags & SHOW_DISASM) printf("ERROR: Failed to disasm given code!\n");
 	}
 
 	printf("\n");
@@ -216,8 +221,8 @@ static void test() {
 	int i;
 
 	for (i = 0; i < sizeof(platforms)/sizeof(platforms[0]); i++) {
-		disasm(&platforms[i], 0x1000, 0);
-		disasm(&platforms[i], 0, 0);
+		disasm(&platforms[i], 0x1000, 0, 0);
+		disasm(&platforms[i], 0, 0, 0);
 	}
 }
 static int test1() {
@@ -293,7 +298,7 @@ static int test1() {
 	}
 
 	for (i = 0; i < sizeof(platforms)/sizeof(platforms[0]); i++) {
-		disasm(&platforms[i], 0x1000, 0);
+		disasm(&platforms[i], 0x1000, 0, 0);
 	}
 
 L_RETURN:
@@ -396,7 +401,7 @@ int main(int argc, char * argv[]) {
 
 	// test();
 	test1();
-	disasm(&platform, 0, opt_offset);
+	disasm(&platform, 0, opt_offset, 0);
 
 L_RETURN:
 	if (platform.code) {
