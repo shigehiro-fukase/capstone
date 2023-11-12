@@ -345,11 +345,11 @@ int main(int argc, char * argv[]) {
 
 	if (opt_XLEN == 32) {
 		platform.arch = CS_ARCH_RISCV;
-		platform.mode = CS_MODE_RISCV32;
+		platform.mode = CS_MODE_RISCV32|CS_MODE_RISCVC;
 		platform.comment = "riscv32";
 	} else if (opt_XLEN == 64) {
 		platform.arch = CS_ARCH_RISCV;
-		platform.mode = CS_MODE_RISCV64;
+		platform.mode = CS_MODE_RISCV64|CS_MODE_RISCVC;
 		platform.comment = "riscv64";
 	}
 
