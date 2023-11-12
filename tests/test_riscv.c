@@ -26,6 +26,51 @@ static void print_string_hex(const char *comment, unsigned char *str, size_t len
 	printf("\n");
 }
 
+static char * snprint_bits(char* dst, uint32_t num, unsigned bits) {
+	int i;
+	uint32_t b;
+	char *p = dst;
+	for (i=bits-1; i>=0; i--) {
+		b = (num >> i) & 1;
+		*p = '0' + b;
+		p++;
+	}
+	return p;
+}
+static void print_insn_bits(cs_insn *ins) {
+	char buf[64];
+	buf[0] = '\0';
+	if (ins->size == 2) {
+		uint16_t num = *((uint16_t*) ins->bytes);
+		char *p = buf;
+		p = snprint_bits(p, (num>>13) & 7, 3);
+		*p++ = '|';
+		p = snprint_bits(p, (num>>2) & 0x7FF, 11);
+		*p++ = '|';
+		p = snprint_bits(p, (num>>0) & 0x3, 2);
+		*p++ = '\0';
+	} else if (ins->size == 4) {
+		uint32_t num = *((uint32_t*) ins->bytes);
+		char *p = buf;
+		p = snprint_bits(p, (num>>15), 17);
+		*p++ = '|';
+		p = snprint_bits(p, (num>>12) & 7, 3);
+		*p++ = '|';
+		p = snprint_bits(p, (num>> 7) & 0x1F, 5);
+		*p++ = '|';
+		p = snprint_bits(p, (num>> 2) & 0x1F, 5);
+		*p++ = '|';
+		p = snprint_bits(p, (num>> 0) & 0x3, 2);
+		*p++ = '\0';
+	}
+	printf("%s", buf);
+}
+static void print_insn_bytes(cs_insn *ins) {
+	int i;
+	for (i=0; i<ins->size; i++) {
+		printf("%s%02X", (i==0) ? "" : " ", ins->bytes[i]);
+	}
+}
 static void print_insn_detail(cs_insn *ins)
 {
 	int i;
@@ -40,43 +85,41 @@ static void print_insn_detail(cs_insn *ins)
 	riscv = &(ins->detail->riscv);
 	detail = ins->detail;
 	if (riscv->op_count)
-		printf("\top_count: %u\n", riscv->op_count);
+		printf("op(%u) ", riscv->op_count);
 
 	for (i = 0; i < riscv->op_count; i++) {
 		cs_riscv_op *op = &(riscv->operands[i]);
 		switch((int)op->type) {
 			default:
-				printf("\terror in opt_type: %u\n", (int)op->type);
+				printf("error in opt_type:%u", (int)op->type);
 				break;
 			case RISCV_OP_REG:
-				printf("\t\toperands[%u].type: REG = %s\n", i, cs_reg_name(handle, op->reg));
+				printf("[%u]{.type:REG=%s}", i, cs_reg_name(handle, op->reg));
 				break;
 			case RISCV_OP_IMM:
-				printf("\t\toperands[%u].type: IMM = 0x%" PRIx64 "\n", i, op->imm);
+				printf("[%u]{.type:IMM=0x%" PRIx64 "}", i, op->imm);
 				break;
 			case RISCV_OP_MEM:
-				printf("\t\toperands[%u].type: MEM\n", i);
+				printf("[%u]{.type:MEM}", i);
 				if (op->mem.base != RISCV_REG_INVALID)
-					printf("\t\t\toperands[%u].mem.base: REG = %s\n",
+					printf("[%u]{.mem.base: REG=%s}",
 							i, cs_reg_name(handle, op->mem.base));
 				if (op->mem.disp != 0)
-					printf("\t\t\toperands[%u].mem.disp: 0x%" PRIx64 "\n", i, op->mem.disp);
+					printf("[%u]{.mem.disp:0x%" PRIx64 "}", i, op->mem.disp);
 
 				break;
 		}
-
 	}
 	
 	//print the groups this instruction belongs to
 	if (detail->groups_count > 0) {
-		printf("\tgroups: ");
+		printf(" groups[");
 		for (n = 0; n < detail->groups_count; n++) {
 			printf("%s ", cs_group_name(handle, detail->groups[n]));
 		}
-		printf("\n");
+		printf("]");
 	}
 
-	printf("\n");
 }
 
 static void test()
@@ -126,8 +169,20 @@ static void test()
 			printf("Disasm:\n");
 
 			for (j = 0; j < count; j++) {
-				printf("0x%" PRIx64 ":\t%s\t%s\n", insn[j].address, insn[j].mnemonic, insn[j].op_str);
+				// address
+				printf("0x%" PRIx64 ": ", insn[j].address);
+				// bits
+				print_insn_bits(&insn[j]);
+				printf("  ");
+				// bytes
+				print_insn_bytes(&insn[j]);
+				printf("  ");
+				// mnemonic op
+				char mnbuf[64];
+				sprintf(mnbuf, "%-6s %s", insn[j].mnemonic, insn[j].op_str);
+				printf("%-24s  ", mnbuf);
 				print_insn_detail(&insn[j]);
+				printf("\n");
 			}
 			printf("0x%" PRIx64 ":\n", insn[j-1].address + insn[j-1].size);
 
