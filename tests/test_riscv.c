@@ -131,7 +131,7 @@ static void print_insn_detail(cs_insn *ins)
 	
 	//print the groups this instruction belongs to
 	if (detail->groups_count > 0) {
-		printf(" groups[");
+		printf("%sgroups[", (riscv->op_count) ? " " : "");
 		for (n = 0; n < detail->groups_count; n++) {
 			printf("%s%s", (n==0) ? "" : " ", cs_group_name(handle, detail->groups[n]));
 		}
