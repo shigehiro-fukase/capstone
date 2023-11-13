@@ -109,7 +109,7 @@ static void print_insn_detail(cs_insn *ins)
 		cs_riscv_op *op = &(riscv->operands[i]);
 		switch((int)op->type) {
 			default:
-				printf("error in opt_type:%u", (int)op->type);
+				printf(".type:ERR=%u", (int)op->type);
 				break;
 			case RISCV_OP_REG:
 				printf("[%u]{.type:REG=%s}", i, cs_reg_name(handle, op->reg));
@@ -120,7 +120,7 @@ static void print_insn_detail(cs_insn *ins)
 			case RISCV_OP_MEM:
 				printf("[%u]{.type:MEM}", i);
 				if (op->mem.base != RISCV_REG_INVALID)
-					printf("[%u]{.mem.base: REG=%s}",
+					printf("[%u]{.mem.base:REG=%s}",
 							i, cs_reg_name(handle, op->mem.base));
 				if (op->mem.disp != 0)
 					printf("[%u]{.mem.disp:0x%" PRIx64 "}", i, op->mem.disp);
