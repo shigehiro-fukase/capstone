@@ -109,7 +109,7 @@ static void print_insn_detail(cs_insn *ins)
 		cs_riscv_op *op = &(riscv->operands[i]);
 		switch((int)op->type) {
 			default:
-				printf(".type:ERR=%u", (int)op->type);
+				printf("[%u]{.type:ERR=%u}", i, (int)op->type);
 				break;
 			case RISCV_OP_REG:
 				printf("[%u]{.type:REG=%s}", i, cs_reg_name(handle, op->reg));
