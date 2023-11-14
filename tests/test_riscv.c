@@ -5,7 +5,7 @@
 #include <capstone/capstone.h>
 
 static unsigned long opt_XLEN = 64;
-static uint64_t opt_addr = 0;
+static uint64_t opt_vma = 0;
 static fpos_t opt_fpos = 0; 
 static size_t opt_len = 0; 
 static int usage(int argc, char * argv[]);
@@ -355,10 +355,10 @@ int main(int argc, char * argv[]) {
 				i++;
 				opt_len = strtoul(argv[i], NULL, 0);
 			} else return bad_arg(argc, argv, i, 0);
-		} else if (strcmp("--addr", argv[i]) == 0) {
+		} else if (strcmp("--vma", argv[i]) == 0) {
 			if ((i+1)<argc) {
 				i++;
-				opt_addr = strtoul(argv[i], NULL, 0);
+				opt_vma = strtoul(argv[i], NULL, 0);
 			} else return bad_arg(argc, argv, i, 0);
 		} else {
 			if (!ifname) {
@@ -436,7 +436,7 @@ int main(int argc, char * argv[]) {
 		platform.size = rlen;
 		// end-of-file
 	}
-	disasm(&platform, opt_addr, 0);
+	disasm(&platform, opt_vma, 0);
 
 L_RETURN:
 	if (platform.code) {
@@ -452,7 +452,7 @@ static int usage(int argc, char * argv[]) {
 	printf("-x XLEN         \"64\" (default) or \"32\"\n");
 	printf("--fpos NUMBER    File seek offset (default: head of the file)\n");
 	printf("--len NUMBER     Data length (default: file size - fpos)\n");
-	printf("--addr NUMBER    Address offset\n");
+	printf("--vma NUMBER     Address offset\n");
 	return -1;
 }
 static int bad_arg(int argc, char * argv[], int n1, int n2) {
