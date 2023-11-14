@@ -450,9 +450,9 @@ static int usage(int argc, char * argv[]) {
 	printf("%s [OPTIONS] filename\n", argv[0]);
 	printf("OPTIONS\n");
 	printf("-x XLEN         \"64\" (default) or \"32\"\n");
-	printf("--fpos NUMBER    File seek offset (default: head of the file)\n");
-	printf("--len NUMBER     Data length (default: file size - fpos)\n");
-	printf("--vma NUMBER     Address offset\n");
+	printf("--fpos NUMBER   File seek offset (default: head of the file)\n");
+	printf("--len NUMBER    Data length (default: file size - fpos)\n");
+	printf("--vma NUMBER    Address offset\n");
 	return -1;
 }
 static int bad_arg(int argc, char * argv[], int n1, int n2) {
