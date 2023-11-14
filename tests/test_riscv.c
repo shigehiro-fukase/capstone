@@ -4,8 +4,10 @@
 #include <capstone/platform.h>
 #include <capstone/capstone.h>
 
-static uint64_t opt_offset = 0;
 static unsigned long opt_XLEN = 64;
+static uint64_t opt_addr = 0;
+static fpos_t opt_fpos = 0; 
+static size_t opt_len = 0; 
 static int usage(int argc, char * argv[]);
 static int bad_arg(int argc, char * argv[], int n1, int n2);
 
@@ -143,7 +145,7 @@ static void print_insn_detail(cs_insn *ins)
 #define SHOW_PLATFORM	(1<<0)
 #define SHOW_CODE		(1<<1)
 #define SHOW_DISASM		(1<<2)
-static void disasm(struct platform * platform, uint64_t address, uint64_t offset, int flags) {
+static void disasm(struct platform * platform, uint64_t address, int flags) {
 	cs_insn *insn;
 	size_t count;
 
@@ -221,7 +223,7 @@ static void test() {
 	int i;
 
 	for (i = 0; i < sizeof(platforms)/sizeof(platforms[0]); i++) {
-		disasm(&platforms[i], 0x1000, 0, 0);
+		disasm(&platforms[i], 0x1000, 0);
 	}
 }
 static int test1() {
@@ -297,7 +299,7 @@ static int test1() {
 	}
 
 	for (i = 0; i < sizeof(platforms)/sizeof(platforms[0]); i++) {
-		disasm(&platforms[i], 0x1000, 0, 0);
+		disasm(&platforms[i], 0x80000000, 0);
 	}
 
 L_RETURN:
@@ -315,7 +317,8 @@ int main(int argc, char * argv[]) {
 	int ret = 0;
 	const char * ifname = NULL;
 	FILE *ifp;
-	fpos_t fpos; 
+	fpos_t fsize; 
+	size_t data_len;
 	struct platform platform;
 	platform.code = (unsigned char *) NULL;
 	int i;
@@ -342,10 +345,20 @@ int main(int argc, char * argv[]) {
 			flags |= FLAGS_TEST;
 		} else if (strcmp("--test1", argv[i]) == 0) {
 			flags |= FLAGS_TEST1;
-		} else if (strcmp("--off", argv[i]) == 0) {
+		} else if (strcmp("--fpos", argv[i]) == 0) {
 			if ((i+1)<argc) {
 				i++;
-				opt_offset = strtoul(argv[i], NULL, 0);
+				opt_fpos = strtoul(argv[i], NULL, 0);
+			} else return bad_arg(argc, argv, i, 0);
+		} else if (strcmp("--len", argv[i]) == 0) {
+			if ((i+1)<argc) {
+				i++;
+				opt_len = strtoul(argv[i], NULL, 0);
+			} else return bad_arg(argc, argv, i, 0);
+		} else if (strcmp("--addr", argv[i]) == 0) {
+			if ((i+1)<argc) {
+				i++;
+				opt_addr = strtoul(argv[i], NULL, 0);
 			} else return bad_arg(argc, argv, i, 0);
 		} else {
 			if (!ifname) {
@@ -380,34 +393,50 @@ int main(int argc, char * argv[]) {
 	}
 
 	fseek(ifp, 0, SEEK_END); 
-	fgetpos(ifp, &fpos); 
-	fseek(ifp, 0, SEEK_SET); 
+	fgetpos(ifp, &fsize); 
+	if (opt_fpos > fsize) {
+		printf("File start pos > file size.\n");
+		ret = -1;
+		goto L_RETURN;
+	}
+	fseek(ifp, opt_fpos, SEEK_SET); 
 
-	if (fpos == 0) {
+	if (fsize == 0) {
 		printf("Empty file.\n");
 		ret = -1;
 		goto L_RETURN;
 	}
+	if (opt_len == 0) {
+		opt_len = fsize;
+	}
+	if (opt_len > (fsize - opt_fpos)) {
+		data_len = fsize - opt_fpos;
+		printf("Data length truncated to %zu.\n", data_len);
+		ret = -1;
+		goto L_RETURN;
+	} else {
+		data_len = opt_len;
+	}
 
-	platform.code = (unsigned char *) malloc(fpos);
+	platform.code = (unsigned char *) malloc(data_len);
 	if (!platform.code) {
-		printf("Can't allocate memmory 0x%IX bytes.\n", fpos);
+		printf("Can't allocate memmory 0x%IX bytes.\n", data_len);
 		return -1;
 	}
-	platform.size = fpos;
+	platform.size = data_len;
 
-	size_t rsize = 1, rnmemb = fpos, rlen;
+	size_t rsize = 1, rnmemb = data_len, rlen;
 	rlen = fread(platform.code, rsize, rnmemb, ifp);
 	if (rlen == 0) {
 		printf("Can't read any data.\n");
 		ret = -1;
 		goto L_RETURN;
 	} else if (rlen < rnmemb) {
-		printf("Only read 0x%llX bytes of 0x%IX.\n", rlen, fpos);
+		printf("Only read 0x%llX bytes of 0x%IX.\n", rlen, data_len);
 		platform.size = rlen;
 		// end-of-file
 	}
-	disasm(&platform, 0, opt_offset, 0);
+	disasm(&platform, opt_addr, 0);
 
 L_RETURN:
 	if (platform.code) {
@@ -421,7 +450,9 @@ static int usage(int argc, char * argv[]) {
 	printf("%s [OPTIONS] filename\n", argv[0]);
 	printf("OPTIONS\n");
 	printf("-x XLEN         \"64\" (default) or \"32\"\n");
-	printf("--off NUMBER    Address offset\n");
+	printf("--fpos NUMBER    File seek offset (default: head of the file)\n");
+	printf("--len NUMBER     Data length (default: file size - fpos)\n");
+	printf("--addr NUMBER    Address offset\n");
 	return -1;
 }
 static int bad_arg(int argc, char * argv[], int n1, int n2) {
