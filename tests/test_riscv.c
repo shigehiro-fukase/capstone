@@ -30,6 +30,7 @@ static unsigned long opt_XLEN = 64;
 static uint64_t opt_vma = 0;
 static fpos_t opt_fpos = 0; 
 static size_t opt_len = 0; 
+static size_t opt_bulk = 0; 
 static int usage(int argc, char * argv[]);
 static int bad_arg(int argc, char * argv[], int n1, int n2);
 
@@ -222,15 +223,15 @@ static int disasm_ex(struct platform * platform, uint64_t address, int flags, ch
 	count = cs_disasm(handle, platform->code, platform->size, address, 0, &insn);
 	if (count) {
 		size_t j;
+		char line[LINE_MAX];
 
 		if (flags & SHOW_DECORATION) printf("****************\n");
 		if (flags & SHOW_PLATFORM) printf("Platform: %s\n", platform->comment);
 		if (flags & SHOW_CODE) print_string_hex("Code:", platform->code, platform->size);
 		if (flags & SHOW_DISASM) printf("Disasm:\n");
 
+		line[0] = '\0';
 		for (j = 0; j < count; j++) {
-			char line[LINE_MAX];
-			line[0] = '\0';
 			if ((j>0) && (strlen(line)>0)) catsprintf(line, "\n");
 			// address
 			catsprintf(line, "0x%08" PRIx64 ": ", insn[j].address);
@@ -390,6 +391,7 @@ int disasm_file(struct platform * platform, const char * ifname) {
 	FILE *ifp;
 	fpos_t fsize; 
 	size_t data_len;
+	char * codebuf;
 	platform->code = (unsigned char *) NULL;
 
 	if (!ifname) {
@@ -429,40 +431,84 @@ int disasm_file(struct platform * platform, const char * ifname) {
 		data_len = opt_len;
 	}
 
-	platform->code = (unsigned char *) malloc(data_len);
-	if (!platform->code) {
+	codebuf = (unsigned char *) malloc(data_len);
+	if (!codebuf) {
 		printf("Can't allocate memmory 0x%IX bytes.\n", data_len);
 		return -1;
 	}
 	platform->size = data_len;
 
 	size_t rsize = 1, rnmemb = data_len, rlen;
-	rlen = fread(platform->code, rsize, rnmemb, ifp);
+	rlen = fread(codebuf, rsize, rnmemb, ifp);
 	if (rlen == 0) {
 		printf("Can't read any data.\n");
 		ret = -1;
 		goto L_RETURN;
 	} else if (rlen < rnmemb) {
 		printf("Only read 0x%llX bytes of 0x%IX.\n", rlen, data_len);
-		platform->size = rlen;
 		// end-of-file
 	} else {
 		printf("Data length 0x%IX.\n", data_len);
 	}
-	ret = disasm(platform, opt_vma, 0
-			| SHOW_ERROR
-			| SHOW_DETAIL
-			// | SHOW_DECORATION
-			| SHOW_PLATFORM
-			// | SHOW_CODE
-			| SHOW_DISASM
-			| SHOW_END
-		  );
-	printf("disasm ret = %d\n", ret);
+	if (opt_bulk) {
+		platform->code = codebuf;
+		platform->size = rlen;
+		ret = disasm(platform, opt_vma, 0
+				| SHOW_ERROR
+				| SHOW_DETAIL
+				// | SHOW_DECORATION
+				| SHOW_PLATFORM
+				// | SHOW_CODE
+				| SHOW_DISASM
+				| SHOW_END
+				);
+		printf("disasm ret = %d\n", ret);
+	} else {
+		size_t off;
+		uint32_t inst;
+		for (off=0; off<rlen; ) {
+			char line[LINE_MAX];
+			line[0] = '\0';
+			inst = *((uint32_t*)&codebuf[off]);
+			platform->code = (unsigned char*)&inst;
+			platform->size = sizeof(inst);
+			ret = disasm_ex(platform, opt_vma+off, 0
+					| SHOW_NONE
+					// | SHOW_ERROR
+					// | SHOW_DETAIL
+					// | SHOW_DECORATION
+					// | SHOW_PLATFORM
+					// | SHOW_CODE
+					// | SHOW_DISASM
+					// | SHOW_END
+					, line, sizeof(line)
+					);
+			if (ret < 0) {
+				printf("NV 0x%08X 0x%08llx\n", inst, opt_vma+off);
+				off += sizeof(uint32_t);
+			} else if (ret > 1) {
+#if 1
+				char * p;
+				for (p=line; *p; p++) {
+					if ((*p == '\r') || (*p == '\n')) {
+						*p = '\0';
+						break;
+					}
+				}
+#endif
+				printf("%2u 0x%08X %s\n", ret, inst, line);
+				off += sizeof(uint32_t)/ret;
+			} else {
+				printf("%2u 0x%08X %s\n", ret, inst, line);
+				off += sizeof(uint32_t)/ret;
+			}
+		}
+	}
 
 L_RETURN:
-	if (platform->code) {
-		free(platform->code);
+	if (codebuf) {
+		free(codebuf);
+		codebuf = 0;
 		platform->code = NULL;
 	}
 	if (ifp != stdin) fclose(ifp);
@@ -492,11 +538,10 @@ static uint32_t getrand32(void) {
 #warning "CONFIG_RAND_METHOD invalid."
 #endif
 }
-static int rand_gen(size_t max, int flags) {
+static int rand_gen(struct platform * platform, size_t max, int flags) {
 	int ret = 0;
 	size_t i;
 	uint32_t inst;
-	struct platform platform;
 	size_t nv_count = 0;
 	size_t ok_count = 0;
 
@@ -508,12 +553,9 @@ static int rand_gen(size_t max, int flags) {
 			inst = (inst << 2) | 0x3;
 		}
 
-		platform.arch = CS_ARCH_RISCV;
-		platform.mode = CS_MODE_RISCV64|CS_MODE_RISCVC;
-		platform.comment = "riscv64";
-		platform.code = (unsigned char*)&inst;
-		platform.size = sizeof(inst);
-		ret = disasm_ex(&platform, 0x1000, 0
+		platform->code = (unsigned char*)&inst;
+		platform->size = sizeof(inst);
+		ret = disasm_ex(platform, 0x1000, 0
 				| SHOW_NONE
 				// | SHOW_ERROR
 				// | SHOW_DETAIL
@@ -576,6 +618,8 @@ int main(int argc, char * argv[]) {
 				i++;
 				opt_vma = strtoul(argv[i], NULL, 0);
 			} else return bad_arg(argc, argv, i, 0);
+		} else if (strcmp("--bulk", argv[i]) == 0) {
+			opt_bulk = 1; 
 		} else if (strcmp("--rand16", argv[i]) == 0) {
 			// TODO:ランダムな16ビットの命令(RVC)を生成する
 			flags |= FLAGS_RAND16;
@@ -599,7 +643,7 @@ int main(int argc, char * argv[]) {
 		platform.comment = "riscv64";
 	}
 
-	if (flags & FLAGS_RAND32) return rand_gen(100, flags);
+	if (flags & FLAGS_RAND32) return rand_gen(&platform, 100, flags);
 	if (flags & FLAGS_TEST) test();
 	if (flags & FLAGS_TEST1) test1();
     return disasm_file(&platform, ifname);
@@ -611,6 +655,7 @@ static int usage(int argc, char * argv[]) {
 	printf("--fpos NUMBER   File seek offset (default: head of the file)\n");
 	printf("--len NUMBER    Data length (default: file size - fpos)\n");
 	printf("--vma NUMBER    Address offset\n");
+	printf("--bulk          Bulk disasm (default: step-by-step)\n");
 	return -1;
 }
 static int bad_arg(int argc, char * argv[], int n1, int n2) {
