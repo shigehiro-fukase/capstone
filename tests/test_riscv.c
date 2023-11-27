@@ -21,6 +21,16 @@ struct platform {
 
 static csh handle;
 
+static fpos_t file_get_size(FILE *fp) {
+	fpos_t pos, size; 
+
+	if (!fp) return -1;
+	fgetpos(fp, &pos); // current pos
+	fseek(fp, 0, SEEK_END); 
+	fgetpos(fp, &size); 
+	fseek(fp, pos, SEEK_SET);  // rewind to pos
+    return size;
+}
 static void print_string_hex(const char *comment, unsigned char *str, size_t len)
 {
 	unsigned char *c;
@@ -330,8 +340,7 @@ int disasm_file(struct platform * platform, const char * ifname) {
 		return -1;
 	}
 
-	fseek(ifp, 0, SEEK_END); 
-	fgetpos(ifp, &fsize); 
+    fsize = file_get_size(ifp);
 	if (opt_fpos > fsize) {
 		printf("File start pos > file size.\n");
 		ret = -1;
