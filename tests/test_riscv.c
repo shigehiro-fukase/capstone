@@ -311,16 +311,84 @@ L_RETURN:
 	}
 	return ret;
 }
-#define FLAGS_TEST	(1<<0)
-#define FLAGS_TEST1	(1<<0)
-int main(int argc, char * argv[]) {
+int disasm_file(struct platform * platform, const char * ifname) {
 	int ret = 0;
-	const char * ifname = NULL;
 	FILE *ifp;
 	fpos_t fsize; 
 	size_t data_len;
+	platform->code = (unsigned char *) NULL;
+
+	if (!ifname) {
+		printf("Need an argument of filename\n");
+		return -1;
+	}
+
+	printf("ifname=\"%s\"\n", ifname);
+	ifp = fopen(ifname, "rb");
+	if (!ifp) {
+		printf("Cannot open file \"%s\"\n", ifname);
+		return -1;
+	}
+
+	fseek(ifp, 0, SEEK_END); 
+	fgetpos(ifp, &fsize); 
+	if (opt_fpos > fsize) {
+		printf("File start pos > file size.\n");
+		ret = -1;
+		goto L_RETURN;
+	}
+	fseek(ifp, opt_fpos, SEEK_SET); 
+
+	if (fsize == 0) {
+		printf("Empty file.\n");
+		ret = -1;
+		goto L_RETURN;
+	}
+	if (opt_len == 0) {
+		opt_len = fsize;
+	}
+	if (opt_len > (fsize - opt_fpos)) {
+		data_len = fsize - opt_fpos;
+		printf("Data length truncated to %zu.\n", data_len);
+		ret = -1;
+		goto L_RETURN;
+	} else {
+		data_len = opt_len;
+	}
+
+	platform->code = (unsigned char *) malloc(data_len);
+	if (!platform->code) {
+		printf("Can't allocate memmory 0x%IX bytes.\n", data_len);
+		return -1;
+	}
+	platform->size = data_len;
+
+	size_t rsize = 1, rnmemb = data_len, rlen;
+	rlen = fread(platform->code, rsize, rnmemb, ifp);
+	if (rlen == 0) {
+		printf("Can't read any data.\n");
+		ret = -1;
+		goto L_RETURN;
+	} else if (rlen < rnmemb) {
+		printf("Only read 0x%llX bytes of 0x%IX.\n", rlen, data_len);
+		platform->size = rlen;
+		// end-of-file
+	}
+	disasm(platform, opt_vma, 0);
+
+L_RETURN:
+	if (platform->code) {
+		free(platform->code);
+		platform->code = NULL;
+	}
+	if (ifp != stdin) fclose(ifp);
+	return ret;
+}
+#define FLAGS_TEST		(1<<0)
+#define FLAGS_TEST1		(1<<1)
+int main(int argc, char * argv[]) {
+	const char * ifname = NULL;
 	struct platform platform;
-	platform.code = (unsigned char *) NULL;
 	int i;
 	int flags = 0;
 
@@ -379,72 +447,7 @@ int main(int argc, char * argv[]) {
 
 	if (flags & FLAGS_TEST) test();
 	if (flags & FLAGS_TEST1) test1();
-
-	if (!ifname) {
-		printf("Need an argument of filename\n");
-		return -1;
-	}
-
-	printf("ifname=\"%s\"\n", ifname);
-	ifp = fopen(ifname, "rb");
-	if (!ifp) {
-		printf("Cannot open file \"%s\"\n", ifname);
-		return -1;
-	}
-
-	fseek(ifp, 0, SEEK_END); 
-	fgetpos(ifp, &fsize); 
-	if (opt_fpos > fsize) {
-		printf("File start pos > file size.\n");
-		ret = -1;
-		goto L_RETURN;
-	}
-	fseek(ifp, opt_fpos, SEEK_SET); 
-
-	if (fsize == 0) {
-		printf("Empty file.\n");
-		ret = -1;
-		goto L_RETURN;
-	}
-	if (opt_len == 0) {
-		opt_len = fsize;
-	}
-	if (opt_len > (fsize - opt_fpos)) {
-		data_len = fsize - opt_fpos;
-		printf("Data length truncated to %zu.\n", data_len);
-		ret = -1;
-		goto L_RETURN;
-	} else {
-		data_len = opt_len;
-	}
-
-	platform.code = (unsigned char *) malloc(data_len);
-	if (!platform.code) {
-		printf("Can't allocate memmory 0x%IX bytes.\n", data_len);
-		return -1;
-	}
-	platform.size = data_len;
-
-	size_t rsize = 1, rnmemb = data_len, rlen;
-	rlen = fread(platform.code, rsize, rnmemb, ifp);
-	if (rlen == 0) {
-		printf("Can't read any data.\n");
-		ret = -1;
-		goto L_RETURN;
-	} else if (rlen < rnmemb) {
-		printf("Only read 0x%llX bytes of 0x%IX.\n", rlen, data_len);
-		platform.size = rlen;
-		// end-of-file
-	}
-	disasm(&platform, opt_vma, 0);
-
-L_RETURN:
-	if (platform.code) {
-		free(platform.code);
-		platform.code = NULL;
-	}
-	if (ifp != stdin) fclose(ifp);
-	return ret;
+    return disasm_file(&platform, ifname);
 }
 static int usage(int argc, char * argv[]) {
 	printf("%s [OPTIONS] filename\n", argv[0]);
