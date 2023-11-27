@@ -1,9 +1,31 @@
-#include <stdio.h>
+﻿#include <stdio.h>
 #include <stdlib.h>
 
 #include <capstone/platform.h>
 #include <capstone/capstone.h>
 
+#define RAND_METHOD_MT19937AR_SEP		1
+#define RAND_METHOD_MT19937_64			2
+
+// #define CONFIG_RAND_METHOD	RAND_METHOD_MT19937AR_SEP
+#define CONFIG_RAND_METHOD	RAND_METHOD_MT19937_64
+
+#if (CONFIG_RAND_METHOD == RAND_METHOD_MT19937AR_SEP)
+#include "mt19937ar.sep/mt19937ar.h"
+#include "mt19937ar.sep/mt19937ar.c"
+#elif (CONFIG_RAND_METHOD == RAND_METHOD_MT19937_64)
+#include "mt19937-64/mt64.h"
+#include "mt19937-64/mt19937-64.c"
+#else
+#warning "CONFIG_RAND_METHOD invalid."
+#endif
+
+#define LINE_MAX		1024
+
+#define FLAGS_TEST		(1<<0)
+#define FLAGS_TEST1		(1<<1)
+#define FLAGS_RAND16	(1<<2)
+#define FLAGS_RAND32	(1<<3)
 static unsigned long opt_XLEN = 64;
 static uint64_t opt_vma = 0;
 static fpos_t opt_fpos = 0; 
@@ -43,6 +65,18 @@ static void print_string_hex(const char *comment, unsigned char *str, size_t len
 	printf("\n");
 }
 
+static int catvsprintf(char* s, const char *fmt, va_list ap) {
+	char * p = s + strlen(s);
+	return vsprintf(p, fmt, ap);
+}
+static int catsprintf(char* s, const char *fmt, ...) {
+    va_list ap;
+    int ret;
+    va_start(ap, fmt);
+    ret = catvsprintf(s, fmt, ap);
+    va_end(ap);
+    return ret;
+}
 static char * snprint_bits(char* dst, uint32_t num, unsigned bits) {
 	int i;
 	uint32_t b;
@@ -54,7 +88,7 @@ static char * snprint_bits(char* dst, uint32_t num, unsigned bits) {
 	}
 	return p;
 }
-static void print_insn_bits(cs_insn *ins) {
+static void catsprint_insn_bits(char* s, cs_insn *ins) {
 	char buf[64];
 	buf[0] = '\0';
 	if (ins->size == 2) {
@@ -82,27 +116,26 @@ static void print_insn_bits(cs_insn *ins) {
 		p = snprint_bits(p, (num>> 0) & 0x3, 2);
 		*p++ = '\0';
 	}
-	printf("%s", buf);
+	catsprintf(s, "%s", buf);
 }
-static void print_insn_bytes(cs_insn *ins) {
+static void catsprint_insn_bytes(char* s, cs_insn *ins) {
 	int i;
 	if (ins->size == 2) {
 		for (i=0; i<ins->size; i++) {
-			printf("%s%02X", (i==0) ? "" : " ", ins->bytes[i]);
+			catsprintf(s, "%s%02X", (i==0) ? "" : " ", ins->bytes[i]);
 		}
-        printf("      ");
+        catsprintf(s, "      ");
 	} else if (ins->size == 4) {
 		for (i=0; i<ins->size; i++) {
-			printf("%s%02X", (i==0) ? "" : " ", ins->bytes[i]);
+			catsprintf(s, "%s%02X", (i==0) ? "" : " ", ins->bytes[i]);
 		}
 	} else {
 		for (i=0; i<ins->size; i++) {
-			printf("%s%02X", (i==0) ? "" : " ", ins->bytes[i]);
+			catsprintf(s, "%s%02X", (i==0) ? "" : " ", ins->bytes[i]);
 		}
 	}
 }
-static void print_insn_detail(cs_insn *ins)
-{
+static void catsprint_insn_detail(char* s, cs_insn *ins) {
 	int i;
 	int n;
 	cs_riscv *riscv;
@@ -115,27 +148,27 @@ static void print_insn_detail(cs_insn *ins)
 	riscv = &(ins->detail->riscv);
 	detail = ins->detail;
 	if (riscv->op_count)
-		printf("op(%u) ", riscv->op_count);
+		catsprintf(s, "op(%u) ", riscv->op_count);
 
 	for (i = 0; i < riscv->op_count; i++) {
 		cs_riscv_op *op = &(riscv->operands[i]);
 		switch((int)op->type) {
 			default:
-				printf("[%u]{.type:ERR=%u}", i, (int)op->type);
+				catsprintf(s, "[%u]{.type:ERR=%u}", i, (int)op->type);
 				break;
 			case RISCV_OP_REG:
-				printf("[%u]{.type:REG=%s}", i, cs_reg_name(handle, op->reg));
+				catsprintf(s, "[%u]{.type:REG=%s}", i, cs_reg_name(handle, op->reg));
 				break;
 			case RISCV_OP_IMM:
-				printf("[%u]{.type:IMM=0x%" PRIx64 "}", i, op->imm);
+				catsprintf(s, "[%u]{.type:IMM=0x%" PRIx64 "}", i, op->imm);
 				break;
 			case RISCV_OP_MEM:
-				printf("[%u]{.type:MEM}", i);
+				catsprintf(s, "[%u]{.type:MEM}", i);
 				if (op->mem.base != RISCV_REG_INVALID)
-					printf("[%u]{.mem.base:REG=%s}",
+					catsprintf(s, "[%u]{.mem.base:REG=%s}",
 							i, cs_reg_name(handle, op->mem.base));
 				if (op->mem.disp != 0)
-					printf("[%u]{.mem.disp:0x%" PRIx64 "}", i, op->mem.disp);
+					catsprintf(s, "[%u]{.mem.disp:0x%" PRIx64 "}", i, op->mem.disp);
 
 				break;
 		}
@@ -143,28 +176,43 @@ static void print_insn_detail(cs_insn *ins)
 	
 	//print the groups this instruction belongs to
 	if (detail->groups_count > 0) {
-		printf("%sgroups[", (riscv->op_count) ? " " : "");
+		catsprintf(s, "%sgroups[", (riscv->op_count) ? " " : "");
 		for (n = 0; n < detail->groups_count; n++) {
-			printf("%s%s", (n==0) ? "" : " ", cs_group_name(handle, detail->groups[n]));
+			catsprintf(s, "%s%s", (n==0) ? "" : " ", cs_group_name(handle, detail->groups[n]));
 		}
-		printf("]");
+		catsprintf(s, "]");
 	}
 
 }
 
-#define SHOW_PLATFORM	(1<<0)
-#define SHOW_CODE		(1<<1)
-#define SHOW_DISASM		(1<<2)
-static void disasm(struct platform * platform, uint64_t address, int flags) {
+#define SHOW_NONE		(1<<0)
+#define SHOW_ERROR		(1<<1)
+#define SHOW_DETAIL		(1<<2)
+#define SHOW_DECORATION	(1<<3)
+#define SHOW_PLATFORM	(1<<4)
+#define SHOW_CODE		(1<<5)
+#define SHOW_DISASM		(1<<6)
+#define SHOW_END		(1<<7)
+static int disasm_ex(struct platform * platform, uint64_t address, int flags, char * dst, size_t max) {
 	cs_insn *insn;
 	size_t count;
 
-	if (flags == 0) flags = SHOW_PLATFORM | SHOW_DISASM;
+	if (flags == 0) {
+		flags = 0
+			| SHOW_ERROR
+			| SHOW_DETAIL
+			| SHOW_DECORATION
+			| SHOW_PLATFORM
+			| SHOW_CODE
+			| SHOW_DISASM
+			| SHOW_END
+			;
+	}
 
 	cs_err err = cs_open(platform->arch, platform->mode, &handle);
 	if (err) {
-		printf("Failed on cs_open() with error returned: %u\n", err);
-		return;
+		if (flags & SHOW_ERROR) printf("Failed on cs_open() with error returned: %u\n", err);
+		return -1;
 	}
 
 	//To turn on or off the Print Details option
@@ -175,41 +223,57 @@ static void disasm(struct platform * platform, uint64_t address, int flags) {
 	if (count) {
 		size_t j;
 
-		printf("****************\n");
+		if (flags & SHOW_DECORATION) printf("****************\n");
 		if (flags & SHOW_PLATFORM) printf("Platform: %s\n", platform->comment);
 		if (flags & SHOW_CODE) print_string_hex("Code:", platform->code, platform->size);
 		if (flags & SHOW_DISASM) printf("Disasm:\n");
 
 		for (j = 0; j < count; j++) {
+			char line[LINE_MAX];
+			line[0] = '\0';
+			if ((j>0) && (strlen(line)>0)) catsprintf(line, "\n");
 			// address
-			printf("0x%08" PRIx64 ": ", insn[j].address);
+			catsprintf(line, "0x%08" PRIx64 ": ", insn[j].address);
 			// bits
-			print_insn_bits(&insn[j]);
-			printf("  ");
+			catsprint_insn_bits(line, &insn[j]);
+			catsprintf(line, "  ");
 			// bytes
-			print_insn_bytes(&insn[j]);
-			printf("  ");
+			catsprint_insn_bytes(line, &insn[j]);
+			catsprintf(line, "  ");
 			// mnemonic op
 			char mnbuf[64];
 			sprintf(mnbuf, "%-6s %s", insn[j].mnemonic, insn[j].op_str);
-			printf("%-24s  ", mnbuf);
-			print_insn_detail(&insn[j]);
-			printf("\n");
+			catsprintf(line, "%-24s  ", mnbuf);
+			catsprint_insn_detail(line, &insn[j]);
+			if (flags & SHOW_DETAIL) printf("%s\n", line);
+			if (dst) {
+				if (strlen(line) < max) {
+					strcpy(dst, line);
+				} else {
+					strncpy(dst, line, max);
+				}
+			}
 		}
-		printf("0x%08" PRIx64 ": END\n", insn[j-1].address + insn[j-1].size);
+		if (flags & SHOW_END) printf("0x%08" PRIx64 ": END\n", insn[j-1].address + insn[j-1].size);
 
 		// free memory allocated by cs_disasm()
 		cs_free(insn, count);
 	} else {
-		printf("****************\n");
+		if (flags & SHOW_DECORATION) printf("****************\n");
 		if (flags & SHOW_PLATFORM) printf("Platform: %s\n", platform->comment);
 		if (flags & SHOW_CODE) print_string_hex("Code:", platform->code, platform->size);
-		if (flags & SHOW_DISASM) printf("ERROR: Failed to disasm given code!\n");
+		if (flags & SHOW_ERROR) printf("ERROR: Failed to disasm given code!\n");
+		return -1;
 	}
 
-	printf("\n");
+	if (!(flags & SHOW_NONE)) printf("\n");
 
 	cs_close(&handle);
+
+	return (int) count;
+}
+static int disasm(struct platform * platform, uint64_t address, int flags) {
+	return disasm_ex(platform, address, flags, NULL, 0);
 }
 static void test() {
 #define RISCV_CODE32 "\x37\x34\x00\x00\x97\x82\x00\x00\xef\x00\x80\x00\xef\xf0\x1f\xff\xe7\x00\x45\x00\xe7\x00\xc0\xff\x63\x05\x41\x00\xe3\x9d\x61\xfe\x63\xca\x93\x00\x63\x53\xb5\x00\x63\x65\xd6\x00\x63\x76\xf7\x00\x03\x88\x18\x00\x03\x99\x49\x00\x03\xaa\x6a\x00\x03\xcb\x2b\x01\x03\xdc\x8c\x01\x23\x86\xad\x03\x23\x9a\xce\x03\x23\x8f\xef\x01\x93\x00\xe0\x00\x13\xa1\x01\x01\x13\xb2\x02\x7d\x13\xc3\x03\xdd\x13\xe4\xc4\x12\x13\xf5\x85\x0c\x13\x96\xe6\x01\x13\xd7\x97\x01\x13\xd8\xf8\x40\x33\x89\x49\x01\xb3\x0a\x7b\x41\x33\xac\xac\x01\xb3\x3d\xde\x01\x33\xd2\x62\x40\xb3\x43\x94\x00\x33\xe5\xc5\x00\xb3\x76\xf7\x00\xb3\x54\x39\x01\xb3\x50\x31\x00\x33\x9f\x0f\x00"
@@ -382,8 +446,19 @@ int disasm_file(struct platform * platform, const char * ifname) {
 		printf("Only read 0x%llX bytes of 0x%IX.\n", rlen, data_len);
 		platform->size = rlen;
 		// end-of-file
+	} else {
+		printf("Data length 0x%IX.\n", data_len);
 	}
-	disasm(platform, opt_vma, 0);
+	ret = disasm(platform, opt_vma, 0
+			| SHOW_ERROR
+			| SHOW_DETAIL
+			// | SHOW_DECORATION
+			| SHOW_PLATFORM
+			// | SHOW_CODE
+			| SHOW_DISASM
+			| SHOW_END
+		  );
+	printf("disasm ret = %d\n", ret);
 
 L_RETURN:
 	if (platform->code) {
@@ -393,8 +468,72 @@ L_RETURN:
 	if (ifp != stdin) fclose(ifp);
 	return ret;
 }
-#define FLAGS_TEST		(1<<0)
-#define FLAGS_TEST1		(1<<1)
+static uint32_t getrand32(void) {
+	static int initialized = 0;
+#if (CONFIG_RAND_METHOD == RAND_METHOD_MT19937AR_SEP)
+	uint32_t u32;
+	if (!initialized) {
+		init_genrand(10);
+		initialized = 1;
+	}
+	u32 = genrand_int32();
+	// printf("u32 0x%08X\n", u32);
+	return u32;
+#elif (CONFIG_RAND_METHOD == RAND_METHOD_MT19937_64)
+	uint64_t u64;
+	if (!initialized) {
+		init_genrand64(10);
+		initialized = 1;
+	}
+	u64 = genrand64_int64();
+	// printf("u64 0x%016llX\n", u64);
+	return (uint32_t)u64;
+#else
+#warning "CONFIG_RAND_METHOD invalid."
+#endif
+}
+static int rand_gen(size_t max, int flags) {
+	int ret = 0;
+	size_t i;
+	uint32_t inst;
+	struct platform platform;
+	size_t nv_count = 0;
+	size_t ok_count = 0;
+
+	for (i=0; nv_count<max; i++) {
+		char line[LINE_MAX];
+		line[0] = '\0';
+		inst = getrand32();
+		if (!(flags & FLAGS_RAND16)) {
+			inst = (inst << 2) | 0x3;
+		}
+
+		platform.arch = CS_ARCH_RISCV;
+		platform.mode = CS_MODE_RISCV64|CS_MODE_RISCVC;
+		platform.comment = "riscv64";
+		platform.code = (unsigned char*)&inst;
+		platform.size = sizeof(inst);
+		ret = disasm_ex(&platform, 0x1000, 0
+				| SHOW_NONE
+				// | SHOW_ERROR
+				// | SHOW_DETAIL
+				// | SHOW_DECORATION
+				// | SHOW_PLATFORM
+				// | SHOW_CODE
+				// | SHOW_DISASM
+				// | SHOW_END
+				, line, sizeof(line)
+				);
+		if (ret < 0) {
+			nv_count ++;
+			printf("NV 0x%08X\n", inst);
+		} else {
+			ok_count ++;
+			printf("OK 0x%08X \"%s\"\n", inst, line);
+		}
+	};
+    return ret;
+}
 int main(int argc, char * argv[]) {
 	const char * ifname = NULL;
 	struct platform platform;
@@ -437,6 +576,12 @@ int main(int argc, char * argv[]) {
 				i++;
 				opt_vma = strtoul(argv[i], NULL, 0);
 			} else return bad_arg(argc, argv, i, 0);
+		} else if (strcmp("--rand16", argv[i]) == 0) {
+			// TODO:ランダムな16ビットの命令(RVC)を生成する
+			flags |= FLAGS_RAND16;
+		} else if (strcmp("--rand32", argv[i]) == 0) {
+			// TODO:ランダムな32ビットの命令(RV32/64)を生成する
+			flags |= FLAGS_RAND32;
 		} else {
 			if (!ifname) {
 				ifname = argv[i];
@@ -454,6 +599,7 @@ int main(int argc, char * argv[]) {
 		platform.comment = "riscv64";
 	}
 
+	if (flags & FLAGS_RAND32) return rand_gen(100, flags);
 	if (flags & FLAGS_TEST) test();
 	if (flags & FLAGS_TEST1) test1();
     return disasm_file(&platform, ifname);
