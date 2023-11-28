@@ -31,6 +31,8 @@ static uint64_t opt_vma = 0;
 static fpos_t opt_fpos = 0; 
 static size_t opt_len = 0; 
 static size_t opt_bulk = 0; 
+static uint64_t opt_rand_seed = 0;
+static size_t opt_rand_gen_count = 100; 
 static int usage(int argc, char * argv[]);
 static int bad_arg(int argc, char * argv[], int n1, int n2);
 
@@ -521,7 +523,7 @@ static uint32_t getrand32(void) {
 #if (CONFIG_RAND_METHOD == RAND_METHOD_MT19937AR_SEP)
 	uint32_t u32;
 	if (!initialized) {
-		init_genrand(10);
+		init_genrand(opt_rand_seed);
 		initialized = 1;
 	}
 	u32 = genrand_int32();
@@ -530,7 +532,7 @@ static uint32_t getrand32(void) {
 #elif (CONFIG_RAND_METHOD == RAND_METHOD_MT19937_64)
 	uint64_t u64;
 	if (!initialized) {
-		init_genrand64(10);
+		init_genrand64(opt_rand_seed);
 		initialized = 1;
 	}
 	u64 = genrand64_int64();
@@ -579,6 +581,7 @@ static int rand_gen(struct platform * platform, size_t max, int flags) {
 			}
 		}
 	};
+	printf("%s done, count nv %zu ok %zu\n", __func__, nv_count, ok_count);
     return ret;
 }
 int main(int argc, char * argv[]) {
@@ -625,12 +628,26 @@ int main(int argc, char * argv[]) {
 			} else return bad_arg(argc, argv, i, 0);
 		} else if (strcmp("--bulk", argv[i]) == 0) {
 			opt_bulk = 1; 
+		} else if (strcmp("--rand_seed", argv[i]) == 0) {
+			if ((i+1)<argc) {
+				i++;
+				if (strcmp("time", argv[i]) == 0) {
+					opt_rand_seed = time(NULL);
+				} else {
+					opt_rand_seed = strtoull(argv[i], NULL, 0);
+				}
+				printf("rand seed = %llu\n", opt_rand_seed);
+			} else return bad_arg(argc, argv, i, 0);
 		} else if (strcmp("--rand16", argv[i]) == 0) {
 			// TODO:ランダムな16ビットの命令(RVC)を生成する
 			flags |= FLAGS_RAND16;
 		} else if (strcmp("--rand32", argv[i]) == 0) {
 			// TODO:ランダムな32ビットの命令(RV32/64)を生成する
 			flags |= FLAGS_RAND32;
+			if ((i+1)<argc) {
+				i++;
+				opt_rand_gen_count = strtoul(argv[i], NULL, 0);
+			}
 		} else {
 			if (!ifname) {
 				ifname = argv[i];
@@ -648,7 +665,7 @@ int main(int argc, char * argv[]) {
 		platform.comment = "riscv64";
 	}
 
-	if (flags & FLAGS_RAND32) return rand_gen(&platform, 100, flags);
+	if (flags & FLAGS_RAND32) return rand_gen(&platform, opt_rand_gen_count, flags);
 	if (flags & FLAGS_TEST) test();
 	if (flags & FLAGS_TEST1) test1();
     return disasm_file(&platform, ifname);
