@@ -194,9 +194,12 @@ static void catsprint_insn_detail(char* s, cs_insn *ins) {
 #define SHOW_CODE		(1<<5)
 #define SHOW_DISASM		(1<<6)
 #define SHOW_END		(1<<7)
-static int disasm_ex(struct platform * platform, uint64_t address, int flags, char * dst, size_t max) {
+static int disasm_ex(struct platform * platform, uint64_t address, int flags, size_t * rlen, char * dst, size_t max) {
 	cs_insn *insn;
 	size_t count;
+	size_t length = 0;
+
+    if (rlen) *rlen = length;
 
 	if (flags == 0) {
 		flags = 0
@@ -232,6 +235,9 @@ static int disasm_ex(struct platform * platform, uint64_t address, int flags, ch
 
 		line[0] = '\0';
 		for (j = 0; j < count; j++) {
+			length += insn[j].size;
+            if (rlen) *rlen = length;
+
 			if ((j>0) && (strlen(line)>0)) catsprintf(line, "\n");
 			// address
 			catsprintf(line, "0x%08" PRIx64 ": ", insn[j].address);
@@ -271,10 +277,11 @@ static int disasm_ex(struct platform * platform, uint64_t address, int flags, ch
 
 	cs_close(&handle);
 
+    if (rlen) *rlen = length;
 	return (int) count;
 }
 static int disasm(struct platform * platform, uint64_t address, int flags) {
-	return disasm_ex(platform, address, flags, NULL, 0);
+	return disasm_ex(platform, address, flags, NULL, NULL, 0);
 }
 static void test() {
 #define RISCV_CODE32 "\x37\x34\x00\x00\x97\x82\x00\x00\xef\x00\x80\x00\xef\xf0\x1f\xff\xe7\x00\x45\x00\xe7\x00\xc0\xff\x63\x05\x41\x00\xe3\x9d\x61\xfe\x63\xca\x93\x00\x63\x53\xb5\x00\x63\x65\xd6\x00\x63\x76\xf7\x00\x03\x88\x18\x00\x03\x99\x49\x00\x03\xaa\x6a\x00\x03\xcb\x2b\x01\x03\xdc\x8c\x01\x23\x86\xad\x03\x23\x9a\xce\x03\x23\x8f\xef\x01\x93\x00\xe0\x00\x13\xa1\x01\x01\x13\xb2\x02\x7d\x13\xc3\x03\xdd\x13\xe4\xc4\x12\x13\xf5\x85\x0c\x13\x96\xe6\x01\x13\xd7\x97\x01\x13\xd8\xf8\x40\x33\x89\x49\x01\xb3\x0a\x7b\x41\x33\xac\xac\x01\xb3\x3d\xde\x01\x33\xd2\x62\x40\xb3\x43\x94\x00\x33\xe5\xc5\x00\xb3\x76\xf7\x00\xb3\x54\x39\x01\xb3\x50\x31\x00\x33\x9f\x0f\x00"
@@ -465,8 +472,9 @@ int disasm_file(struct platform * platform, const char * ifname) {
 		printf("disasm ret = %d\n", ret);
 	} else {
 		size_t off;
-		uint32_t inst;
 		for (off=0; off<rlen; ) {
+            uint32_t inst;
+            size_t rsize = 0;
 			char line[LINE_MAX];
 			line[0] = '\0';
 			inst = *((uint32_t*)&codebuf[off]);
@@ -481,13 +489,14 @@ int disasm_file(struct platform * platform, const char * ifname) {
 					// | SHOW_CODE
 					// | SHOW_DISASM
 					// | SHOW_END
+                    , &rsize
 					, line, sizeof(line)
 					);
 			if (ret < 0) {
 				printf("NV 0x%08X 0x%08llx\n", inst, opt_vma+off);
 				off += sizeof(uint32_t);
 			} else if (ret > 1) {
-#if 1
+#if 1 // strip to one-line
 				char * p;
 				for (p=line; *p; p++) {
 					if ((*p == '\r') || (*p == '\n')) {
@@ -497,10 +506,10 @@ int disasm_file(struct platform * platform, const char * ifname) {
 				}
 #endif
 				printf("%2u 0x%08X %s\n", ret, inst, line);
-				off += sizeof(uint32_t)/ret;
+				off += rsize / ret;
 			} else {
 				printf("%2u 0x%08X %s\n", ret, inst, line);
-				off += sizeof(uint32_t)/ret;
+				off += rsize / ret;
 			}
 		}
 	}
@@ -546,6 +555,7 @@ static int rand_gen(struct platform * platform, size_t max, int flags) {
 	size_t ok_count = 0;
 
 	for (i=0; nv_count<max; i++) {
+        size_t rsize = 0;
 		char line[LINE_MAX];
 		line[0] = '\0';
 		inst = getrand32();
@@ -564,6 +574,7 @@ static int rand_gen(struct platform * platform, size_t max, int flags) {
 				// | SHOW_CODE
 				// | SHOW_DISASM
 				// | SHOW_END
+                , &rsize
 				, line, sizeof(line)
 				);
 		if (ret < 0) {
