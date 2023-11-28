@@ -186,20 +186,24 @@ static void catsprint_insn_detail(char* s, cs_insn *ins) {
 
 }
 
-#define SHOW_NONE		(1<<0)
-#define SHOW_ERROR		(1<<1)
-#define SHOW_DETAIL		(1<<2)
-#define SHOW_DECORATION	(1<<3)
-#define SHOW_PLATFORM	(1<<4)
-#define SHOW_CODE		(1<<5)
-#define SHOW_DISASM		(1<<6)
-#define SHOW_END		(1<<7)
+#define SHOW_NONE					(1<<0)
+#define SHOW_ERROR					(1<<1)
+#define SHOW_DETAIL					(1<<2)
+#define SHOW_DECORATION				(1<<3)
+#define SHOW_PLATFORM				(1<<4)
+#define SHOW_CODE					(1<<5)
+#define SHOW_DISASM					(1<<6)
+#define SHOW_END					(1<<7)
+#define EXCLUDE_DETAIL_ADDRESS		(1<<8)
+#define EXCLUDE_DETAIL_BITS			(1<<9)
+#define EXCLUDE_DETAIL_BYTES		(1<<10)
+#define EXCLUDE_DETAIL_MNEMONIC_OP	(1<<11)
 static int disasm_ex(struct platform * platform, uint64_t address, int flags, size_t * rlen, char * dst, size_t max) {
 	cs_insn *insn;
 	size_t count;
 	size_t length = 0;
 
-    if (rlen) *rlen = length;
+	if (rlen) *rlen = length;
 
 	if (flags == 0) {
 		flags = 0
@@ -236,22 +240,22 @@ static int disasm_ex(struct platform * platform, uint64_t address, int flags, si
 		line[0] = '\0';
 		for (j = 0; j < count; j++) {
 			length += insn[j].size;
-            if (rlen) *rlen = length;
+			if (rlen) *rlen = length;
 
 			if ((j>0) && (strlen(line)>0)) catsprintf(line, "\n");
 			// address
-			catsprintf(line, "0x%08" PRIx64 ": ", insn[j].address);
+            if (!(flags & EXCLUDE_DETAIL_ADDRESS)) catsprintf(line, "0x%08" PRIx64 ": ", insn[j].address);
 			// bits
-			catsprint_insn_bits(line, &insn[j]);
-			catsprintf(line, "  ");
+            if (!(flags & EXCLUDE_DETAIL_BITS)) catsprint_insn_bits(line, &insn[j]);
+            if (!(flags & EXCLUDE_DETAIL_BITS)) catsprintf(line, "  ");
 			// bytes
-			catsprint_insn_bytes(line, &insn[j]);
-			catsprintf(line, "  ");
+            if (!(flags & EXCLUDE_DETAIL_BYTES)) catsprint_insn_bytes(line, &insn[j]);
+            if (!(flags & EXCLUDE_DETAIL_BYTES)) catsprintf(line, "  ");
 			// mnemonic op
 			char mnbuf[64];
 			sprintf(mnbuf, "%-6s %s", insn[j].mnemonic, insn[j].op_str);
-			catsprintf(line, "%-24s  ", mnbuf);
-			catsprint_insn_detail(line, &insn[j]);
+            if (!(flags & EXCLUDE_DETAIL_MNEMONIC_OP)) catsprintf(line, "%-24s  ", mnbuf);
+            if (!(flags & EXCLUDE_DETAIL_MNEMONIC_OP)) catsprint_insn_detail(line, &insn[j]);
 			if (flags & SHOW_DETAIL) printf("%s\n", line);
 			if (dst) {
 				if (strlen(line) < max) {
@@ -277,7 +281,7 @@ static int disasm_ex(struct platform * platform, uint64_t address, int flags, si
 
 	cs_close(&handle);
 
-    if (rlen) *rlen = length;
+	if (rlen) *rlen = length;
 	return (int) count;
 }
 static int disasm(struct platform * platform, uint64_t address, int flags) {
@@ -473,25 +477,14 @@ int disasm_file(struct platform * platform, const char * ifname) {
 	} else {
 		size_t off;
 		for (off=0; off<rlen; ) {
-            uint32_t inst;
-            size_t rsize = 0;
+			uint32_t inst;
+			size_t rsize = 0;
 			char line[LINE_MAX];
 			line[0] = '\0';
 			inst = *((uint32_t*)&codebuf[off]);
 			platform->code = (unsigned char*)&inst;
 			platform->size = sizeof(inst);
-			ret = disasm_ex(platform, opt_vma+off, 0
-					| SHOW_NONE
-					// | SHOW_ERROR
-					// | SHOW_DETAIL
-					// | SHOW_DECORATION
-					// | SHOW_PLATFORM
-					// | SHOW_CODE
-					// | SHOW_DISASM
-					// | SHOW_END
-                    , &rsize
-					, line, sizeof(line)
-					);
+			ret = disasm_ex(platform, opt_vma+off, SHOW_NONE, &rsize, line, sizeof(line));
 			if (ret < 0) {
 				printf("NV 0x%08X 0x%08llx\n", inst, opt_vma+off);
 				off += sizeof(uint32_t);
@@ -555,7 +548,7 @@ static int rand_gen(struct platform * platform, size_t max, int flags) {
 	size_t ok_count = 0;
 
 	for (i=0; nv_count<max; i++) {
-        size_t rsize = 0;
+		size_t rsize = 0;
 		char line[LINE_MAX];
 		line[0] = '\0';
 		inst = getrand32();
@@ -567,14 +560,11 @@ static int rand_gen(struct platform * platform, size_t max, int flags) {
 		platform->size = sizeof(inst);
 		ret = disasm_ex(platform, 0x1000, 0
 				| SHOW_NONE
-				// | SHOW_ERROR
-				// | SHOW_DETAIL
-				// | SHOW_DECORATION
-				// | SHOW_PLATFORM
-				// | SHOW_CODE
-				// | SHOW_DISASM
-				// | SHOW_END
-                , &rsize
+				| EXCLUDE_DETAIL_ADDRESS
+				// | EXCLUDE_DETAIL_BITS
+				| EXCLUDE_DETAIL_BYTES
+				// | EXCLUDE_DETAIL_MNEMONIC_OP
+				, &rsize
 				, line, sizeof(line)
 				);
 		if (ret < 0) {
@@ -582,7 +572,11 @@ static int rand_gen(struct platform * platform, size_t max, int flags) {
 			printf("NV 0x%08X\n", inst);
 		} else {
 			ok_count ++;
-			printf("OK 0x%08X \"%s\"\n", inst, line);
+			if (strlen(line) > 0) {
+				printf("OK 0x%08X %s\n", inst, line);
+			} else {
+				printf("OK 0x%08X\n", inst);
+			}
 		}
 	};
     return ret;
