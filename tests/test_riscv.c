@@ -246,18 +246,18 @@ static int disasm_ex(struct platform * platform, uint64_t address, int flags, si
 
 			if ((j>0) && (strlen(line)>0)) catsprintf(line, "\n");
 			// address
-            if (!(flags & EXCLUDE_DETAIL_ADDRESS)) catsprintf(line, "0x%08" PRIx64 ": ", insn[j].address);
+			if (!(flags & EXCLUDE_DETAIL_ADDRESS)) catsprintf(line, "0x%08" PRIx64 ": ", insn[j].address);
 			// bits
-            if (!(flags & EXCLUDE_DETAIL_BITS)) catsprint_insn_bits(line, &insn[j]);
-            if (!(flags & EXCLUDE_DETAIL_BITS)) catsprintf(line, "  ");
+			if (!(flags & EXCLUDE_DETAIL_BITS)) catsprint_insn_bits(line, &insn[j]);
+			if (!(flags & EXCLUDE_DETAIL_BITS)) catsprintf(line, "  ");
 			// bytes
-            if (!(flags & EXCLUDE_DETAIL_BYTES)) catsprint_insn_bytes(line, &insn[j]);
-            if (!(flags & EXCLUDE_DETAIL_BYTES)) catsprintf(line, "  ");
+			if (!(flags & EXCLUDE_DETAIL_BYTES)) catsprint_insn_bytes(line, &insn[j]);
+			if (!(flags & EXCLUDE_DETAIL_BYTES)) catsprintf(line, "  ");
 			// mnemonic op
 			char mnbuf[64];
 			sprintf(mnbuf, "%-6s %s", insn[j].mnemonic, insn[j].op_str);
-            if (!(flags & EXCLUDE_DETAIL_MNEMONIC_OP)) catsprintf(line, "%-24s  ", mnbuf);
-            if (!(flags & EXCLUDE_DETAIL_MNEMONIC_OP)) catsprint_insn_detail(line, &insn[j]);
+			if (!(flags & EXCLUDE_DETAIL_MNEMONIC_OP)) catsprintf(line, "%-24s  ", mnbuf);
+			if (!(flags & EXCLUDE_DETAIL_MNEMONIC_OP)) catsprint_insn_detail(line, &insn[j]);
 			if (flags & SHOW_DETAIL) printf("%s\n", line);
 			if (dst) {
 				if (strlen(line) < max) {
@@ -553,9 +553,17 @@ static int rand_gen(struct platform * platform, size_t max, int flags) {
 		size_t rsize = 0;
 		char line[LINE_MAX];
 		line[0] = '\0';
-		inst = getrand32();
-		if (!(flags & FLAGS_RAND16)) {
-			inst = (inst << 2) | 0x3;
+		for (;;) {
+			inst = getrand32();
+			if (!(flags & FLAGS_RAND16)) {
+				inst = (inst << 2) | 0x3;
+				break;
+			} else if (flags & FLAGS_RAND16) {
+				if ((inst & 3) != 3) {
+					inst &= 0xFFFFu;
+					break;
+				} else ; // retry
+			}
 		}
 
 		platform->code = (unsigned char*)&inst;
@@ -575,6 +583,15 @@ static int rand_gen(struct platform * platform, size_t max, int flags) {
 		} else {
 			ok_count ++;
 			if (strlen(line) > 0) {
+#if 1 // strip to one-line
+				char * p;
+				for (p=line; *p; p++) {
+					if ((*p == '\r') || (*p == '\n')) {
+						*p = '\0';
+						break;
+					}
+				}
+#endif
 				printf("OK 0x%08X %s\n", inst, line);
 			} else {
 				printf("OK 0x%08X\n", inst);
@@ -639,8 +656,12 @@ int main(int argc, char * argv[]) {
 				printf("rand seed = %llu\n", opt_rand_seed);
 			} else return bad_arg(argc, argv, i, 0);
 		} else if (strcmp("--rand16", argv[i]) == 0) {
-			// TODO:ランダムな16ビットの命令(RVC)を生成する
+			// ランダムな16ビットの命令(RVC)を生成する
 			flags |= FLAGS_RAND16;
+			if ((i+1)<argc) {
+				i++;
+				opt_rand_gen_count = strtoul(argv[i], NULL, 0);
+			}
 		} else if (strcmp("--rand32", argv[i]) == 0) {
 			// ランダムな32ビットの命令(RV32/64)を生成する
 			flags |= FLAGS_RAND32;
@@ -665,7 +686,9 @@ int main(int argc, char * argv[]) {
 		platform.comment = "riscv64";
 	}
 
-	if (flags & FLAGS_RAND32) return rand_gen(&platform, opt_rand_gen_count, flags);
+	if ((flags & FLAGS_RAND16) || (flags & FLAGS_RAND32)) {
+		return rand_gen(&platform, opt_rand_gen_count, flags);
+	}
 	if (flags & FLAGS_TEST) test();
 	if (flags & FLAGS_TEST1) test1();
     return disasm_file(&platform, ifname);
