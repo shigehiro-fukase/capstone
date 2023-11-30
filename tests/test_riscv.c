@@ -185,7 +185,15 @@ static void catsprint_insn_detail(char* s, cs_insn *ins) {
 		}
 		catsprintf(s, "]");
 	}
-
+}
+static void trim_to_oneline(char * lines) {
+	char * p;
+	for (p=lines; *p; p++) {
+		if ((*p == '\r') || (*p == '\n')) {
+			*p = '\0';
+			break;
+		}
+	}
 }
 
 #define SHOW_NONE					(1<<0)
@@ -491,15 +499,7 @@ int disasm_file(struct platform * platform, const char * ifname) {
 				printf("NV 0x%08X 0x%08llx\n", inst, opt_vma+off);
 				off += sizeof(uint32_t);
 			} else if (ret > 1) {
-#if 1 // strip to one-line
-				char * p;
-				for (p=line; *p; p++) {
-					if ((*p == '\r') || (*p == '\n')) {
-						*p = '\0';
-						break;
-					}
-				}
-#endif
+				trim_to_oneline(line);
 				printf("%2u 0x%08X %s\n", ret, inst, line);
 				off += rsize / ret;
 			} else {
@@ -583,15 +583,7 @@ static int rand_gen(struct platform * platform, size_t max, int flags) {
 		} else {
 			ok_count ++;
 			if (strlen(line) > 0) {
-#if 1 // strip to one-line
-				char * p;
-				for (p=line; *p; p++) {
-					if ((*p == '\r') || (*p == '\n')) {
-						*p = '\0';
-						break;
-					}
-				}
-#endif
+				trim_to_oneline(line);
 				printf("OK 0x%08X %s\n", inst, line);
 			} else {
 				printf("OK 0x%08X\n", inst);
