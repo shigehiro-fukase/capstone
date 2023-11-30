@@ -642,7 +642,7 @@ int main(int argc, char * argv[]) {
 			// TODO:ランダムな16ビットの命令(RVC)を生成する
 			flags |= FLAGS_RAND16;
 		} else if (strcmp("--rand32", argv[i]) == 0) {
-			// TODO:ランダムな32ビットの命令(RV32/64)を生成する
+			// ランダムな32ビットの命令(RV32/64)を生成する
 			flags |= FLAGS_RAND32;
 			if ((i+1)<argc) {
 				i++;
