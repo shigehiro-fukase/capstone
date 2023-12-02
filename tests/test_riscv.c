@@ -54,7 +54,7 @@ static fpos_t file_get_size(FILE *fp) {
 	fseek(fp, 0, SEEK_END); 
 	fgetpos(fp, &size); 
 	fseek(fp, pos, SEEK_SET);  // rewind to pos
-    return size;
+	return size;
 }
 static void print_string_hex(const char *comment, unsigned char *str, size_t len)
 {
@@ -73,12 +73,12 @@ static int catvsprintf(char* s, const char *fmt, va_list ap) {
 	return vsprintf(p, fmt, ap);
 }
 static int catsprintf(char* s, const char *fmt, ...) {
-    va_list ap;
-    int ret;
-    va_start(ap, fmt);
-    ret = catvsprintf(s, fmt, ap);
-    va_end(ap);
-    return ret;
+	va_list ap;
+	int ret;
+	va_start(ap, fmt);
+	ret = catvsprintf(s, fmt, ap);
+	va_end(ap);
+	return ret;
 }
 static char * snprint_bits(char* dst, uint32_t num, unsigned bits) {
 	int i;
@@ -97,7 +97,7 @@ static void catsprint_insn_bits(char* s, cs_insn *ins) {
 	if (ins->size == 2) {
 		uint16_t num = *((uint16_t*) ins->bytes);
 		char *p = buf;
-        strcpy(p, "                  ");
+		strcpy(p, "                  ");
 		p = p+strlen(p);
 		p = snprint_bits(p, (num>>13) & 7, 3);
 		*p++ = '|';
@@ -127,7 +127,7 @@ static void catsprint_insn_bytes(char* s, cs_insn *ins) {
 		for (i=0; i<ins->size; i++) {
 			catsprintf(s, "%s%02X", (i==0) ? "" : " ", ins->bytes[i]);
 		}
-        catsprintf(s, "      ");
+		catsprintf(s, "      ");
 	} else if (ins->size == 4) {
 		for (i=0; i<ins->size; i++) {
 			catsprintf(s, "%s%02X", (i==0) ? "" : " ", ins->bytes[i]);
@@ -156,27 +156,27 @@ static void catsprint_insn_detail(char* s, cs_insn *ins) {
 	for (i = 0; i < riscv->op_count; i++) {
 		cs_riscv_op *op = &(riscv->operands[i]);
 		switch((int)op->type) {
-			default:
-				catsprintf(s, "[%u]{.type:ERR=%u}", i, (int)op->type);
-				break;
-			case RISCV_OP_REG:
-				catsprintf(s, "[%u]{.type:REG=%s}", i, cs_reg_name(handle, op->reg));
-				break;
-			case RISCV_OP_IMM:
-				catsprintf(s, "[%u]{.type:IMM=0x%" PRIx64 "}", i, op->imm);
-				break;
-			case RISCV_OP_MEM:
-				catsprintf(s, "[%u]{.type:MEM}", i);
-				if (op->mem.base != RISCV_REG_INVALID)
-					catsprintf(s, "[%u]{.mem.base:REG=%s}",
-							i, cs_reg_name(handle, op->mem.base));
-				if (op->mem.disp != 0)
-					catsprintf(s, "[%u]{.mem.disp:0x%" PRIx64 "}", i, op->mem.disp);
+		default:
+			catsprintf(s, "[%u]{.type:ERR=%u}", i, (int)op->type);
+			break;
+		case RISCV_OP_REG:
+			catsprintf(s, "[%u]{.type:REG=%s}", i, cs_reg_name(handle, op->reg));
+			break;
+		case RISCV_OP_IMM:
+			catsprintf(s, "[%u]{.type:IMM=0x%" PRIx64 "}", i, op->imm);
+			break;
+		case RISCV_OP_MEM:
+			catsprintf(s, "[%u]{.type:MEM}", i);
+			if (op->mem.base != RISCV_REG_INVALID)
+				catsprintf(s, "[%u]{.mem.base:REG=%s}",
+						i, cs_reg_name(handle, op->mem.base));
+			if (op->mem.disp != 0)
+				catsprintf(s, "[%u]{.mem.disp:0x%" PRIx64 "}", i, op->mem.disp);
 
-				break;
+			break;
 		}
 	}
-	
+
 	//print the groups this instruction belongs to
 	if (detail->groups_count > 0) {
 		catsprintf(s, "%sgroups[", (riscv->op_count) ? " " : "");
@@ -427,7 +427,7 @@ int disasm_file(struct platform * platform, const char * ifname) {
 		return -1;
 	}
 
-    fsize = file_get_size(ifp);
+	fsize = file_get_size(ifp);
 	if (opt_fpos > fsize) {
 		printf("File start pos > file size.\n");
 		ret = -1;
@@ -591,7 +591,7 @@ static int rand_gen(struct platform * platform, size_t max, int flags) {
 		}
 	};
 	printf("%s done, count nv %zu ok %zu\n", __func__, nv_count, ok_count);
-    return ret;
+	return ret;
 }
 int main(int argc, char * argv[]) {
 	const char * ifname = NULL;
@@ -683,7 +683,7 @@ int main(int argc, char * argv[]) {
 	}
 	if (flags & FLAGS_TEST) test();
 	if (flags & FLAGS_TEST1) test1();
-    return disasm_file(&platform, ifname);
+	return disasm_file(&platform, ifname);
 }
 static int usage(int argc, char * argv[]) {
 	printf("%s [OPTIONS] filename\n", argv[0]);
